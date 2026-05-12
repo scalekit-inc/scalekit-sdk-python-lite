@@ -4,8 +4,8 @@ import hmac
 import json
 import time
 import urllib.parse
-import urllib.request
-import urllib.error
+
+import urllib3
 
 try:
     from typing import Dict, Optional
@@ -45,9 +45,12 @@ class ScalekitClient(object):
         )
     """
 
-    def __init__(self, env_url, client_id, client_secret, timeout=30, max_retries=3):
+    def __init__(self, env_url, client_id, client_secret,
+                 connect_timeout=10, read_timeout=30, max_retries=3):
         self._core = CoreClient(env_url, client_id, client_secret,
-                                timeout=timeout, max_retries=max_retries)
+                                connect_timeout=connect_timeout,
+                                read_timeout=read_timeout,
+                                max_retries=max_retries)
         self._jwt = JwtValidator(self._core)
         self._organization = OrganizationClient(self._core)
         self._user = UserClient(self._core)
@@ -161,27 +164,20 @@ class ScalekitClient(object):
         if code_verifier is not None:
             post_data["code_verifier"] = code_verifier
 
-        data = urllib.parse.urlencode(post_data).encode("utf-8")
+        data = urllib.parse.urlencode(post_data)
         url = "{}/oauth/token".format(self._core.env_url)
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        req.add_header("x-sdk-version", _SDK_VERSION_HEADER)
-        req.add_header("user-agent", _USER_AGENT)
-
         try:
-            with urllib.request.urlopen(req, timeout=self._core.timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8")
-            try:
-                err = json.loads(raw)
-            except ValueError:
-                err = {}
-            raise ScalekitError(
-                exc.code,
-                err.get("error_description", raw),
-                err.get("error"),
+            resp = self._core._http.request(
+                "POST", url,
+                body=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=self._core.timeout,
             )
+        except urllib3.exceptions.MaxRetryError as exc:
+            raise ScalekitError(0, "Token request failed: {}".format(exc.reason))
+
+        from scalekit._core import _parse_response
+        body = _parse_response(resp)
 
         id_token = body.get("id_token")
         user = {}
@@ -241,23 +237,20 @@ class ScalekitClient(object):
             "client_secret": self._core.client_secret,
             "refresh_token": refresh_token,
         }
-        data = urllib.parse.urlencode(post_data).encode("utf-8")
+        data = urllib.parse.urlencode(post_data)
         url = "{}/oauth/token".format(self._core.env_url)
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        req.add_header("x-sdk-version", _SDK_VERSION_HEADER)
-        req.add_header("user-agent", _USER_AGENT)
-
         try:
-            with urllib.request.urlopen(req, timeout=self._core.timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8")
-            try:
-                err = json.loads(raw)
-            except ValueError:
-                err = {}
-            raise ScalekitError(exc.code, err.get("error_description", raw), err.get("error"))
+            resp = self._core._http.request(
+                "POST", url,
+                body=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=self._core.timeout,
+            )
+        except urllib3.exceptions.MaxRetryError as exc:
+            raise ScalekitError(0, "Token request failed: {}".format(exc.reason))
+
+        from scalekit._core import _parse_response
+        body = _parse_response(resp)
 
         return {
             "access_token": body.get("access_token"),

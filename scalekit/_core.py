@@ -1,9 +1,11 @@
 import json
 import platform
 import time
-import urllib.request
 import urllib.parse
-import urllib.error
+
+import urllib3
+from urllib3.util.retry import Retry
+from urllib3.util.timeout import Timeout
 
 try:
     from typing import Any, Dict, Optional
@@ -18,10 +20,30 @@ _USER_AGENT = "{} Python/{} ({})".format(
     platform.platform(),
 )
 
-_DEFAULT_TIMEOUT = 30       # seconds per request
-_DEFAULT_MAX_RETRIES = 3    # attempts after the first failure
-_RETRY_BACKOFF = [1, 2, 4]  # seconds between retries (exponential)
-_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_DEFAULT_CONNECT_TIMEOUT = 10   # seconds to establish a connection
+_DEFAULT_READ_TIMEOUT = 30      # seconds to wait for a response
+_DEFAULT_MAX_RETRIES = 3        # retries on transient errors
+
+
+def _make_pool_manager(max_retries):
+    """Create a urllib3 PoolManager with retry and connection-pool settings."""
+    retry = Retry(
+        total=max_retries,
+        backoff_factor=1,           # 1 s, 2 s, 4 s between retries
+        status_forcelist={429, 500, 502, 503, 504},
+        allowed_methods={"GET", "POST", "PATCH", "PUT", "DELETE"},
+        raise_on_status=False,
+        respect_retry_after_header=True,
+    )
+    return urllib3.PoolManager(
+        num_pools=2,
+        maxsize=10,
+        retries=retry,
+        headers={
+            "x-sdk-version": _SDK_VERSION_HEADER,
+            "user-agent": _USER_AGENT,
+        },
+    )
 
 
 class ScalekitError(Exception):
@@ -46,23 +68,28 @@ class ScalekitError(Exception):
 
 
 class CoreClient(object):
-    """Low-level HTTP client. Handles token acquisition, retries, and timeouts.
+    """Low-level HTTP client. Handles token acquisition, connection pooling,
+    retries, and timeouts.
 
     Args:
-        env_url:       Your Scalekit environment URL, e.g. https://acme.scalekit.cloud
-        client_id:     OAuth2 client ID (starts with ``skc_``).
-        client_secret: OAuth2 client secret.
-        timeout:       Per-request timeout in seconds (default: 30).
-        max_retries:   Number of retry attempts on transient errors (default: 3).
+        env_url:            Your Scalekit environment URL,
+                            e.g. ``https://acme.scalekit.cloud``.
+        client_id:          OAuth2 client ID (starts with ``skc_``).
+        client_secret:      OAuth2 client secret.
+        connect_timeout:    Seconds to wait when opening a connection (default: 10).
+        read_timeout:       Seconds to wait for a response (default: 30).
+        max_retries:        Retry attempts on transient errors (default: 3).
     """
 
     def __init__(self, env_url, client_id, client_secret,
-                 timeout=_DEFAULT_TIMEOUT, max_retries=_DEFAULT_MAX_RETRIES):
+                 connect_timeout=_DEFAULT_CONNECT_TIMEOUT,
+                 read_timeout=_DEFAULT_READ_TIMEOUT,
+                 max_retries=_DEFAULT_MAX_RETRIES):
         self.env_url = env_url.rstrip("/")
         self.client_id = client_id
         self.client_secret = client_secret
-        self.timeout = timeout
-        self.max_retries = max_retries
+        self.timeout = Timeout(connect=connect_timeout, read=read_timeout)
+        self._http = _make_pool_manager(max_retries)
         self._token = None
         self._token_expires_at = 0
 
@@ -76,30 +103,20 @@ class CoreClient(object):
             "grant_type": "client_credentials",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-        }).encode("utf-8")
+        })
 
         url = "{}/oauth/token".format(self.env_url)
-        req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        req.add_header("x-sdk-version", _SDK_VERSION_HEADER)
-        req.add_header("user-agent", _USER_AGENT)
-
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8")
-            try:
-                err = json.loads(raw)
-            except ValueError:
-                err = {}
-            raise ScalekitError(
-                exc.code,
-                err.get("error_description", raw),
-                err.get("error"),
+            resp = self._http.request(
+                "POST", url,
+                body=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=self.timeout,
             )
-        except urllib.error.URLError as exc:
+        except urllib3.exceptions.MaxRetryError as exc:
             raise ScalekitError(0, "Token request failed: {}".format(exc.reason))
+
+        body = _parse_response(resp)
 
         self._token = body["access_token"]
         expires_in = body.get("expires_in", 3600)
@@ -112,15 +129,13 @@ class CoreClient(object):
         return {
             "Authorization": "Bearer {}".format(self._get_token()),
             "Content-Type": "application/json",
-            "x-sdk-version": _SDK_VERSION_HEADER,
-            "user-agent": _USER_AGENT,
         }
 
     def request(self, method, path, body=None, params=None):
         """Make an authenticated HTTP request and return parsed JSON.
 
-        Retries automatically on transient errors (429, 5xx, network failures)
-        with exponential backoff. Raises ``ScalekitError`` on permanent failures.
+        Connection pooling and retries are handled transparently by urllib3.
+        Raises ``ScalekitError`` on permanent failures.
 
         Args:
             method: HTTP method string, e.g. ``"GET"``, ``"POST"``.
@@ -132,8 +147,7 @@ class CoreClient(object):
             Parsed JSON response as a dict, or ``{}`` for empty responses.
 
         Raises:
-            ScalekitError: On 4xx/5xx responses after all retries are exhausted,
-                           or on network-level failures.
+            ScalekitError: On 4xx/5xx responses or network-level failures.
         """
         url = "{}{}".format(self.env_url, path)
         if params:
@@ -141,71 +155,36 @@ class CoreClient(object):
             if filtered:
                 url = "{}?{}".format(url, urllib.parse.urlencode(filtered))
 
-        data = None
+        encoded_body = None
         if body is not None:
-            data = json.dumps(body).encode("utf-8")
+            encoded_body = json.dumps(body).encode("utf-8")
 
-        last_error = None
-        attempts = 1 + self.max_retries
-
-        for attempt in range(attempts):
-            if attempt > 0:
-                backoff = _RETRY_BACKOFF[min(attempt - 1, len(_RETRY_BACKOFF) - 1)]
-                time.sleep(backoff)
-
-            try:
-                headers = self._get_headers()
-                req = urllib.request.Request(url, data=data, headers=headers, method=method)
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    raw = resp.read().decode("utf-8")
-                    return json.loads(raw) if raw else {}
-
-            except urllib.error.HTTPError as exc:
-                if exc.code == 429:
-                    # Respect Retry-After header if present.
-                    retry_after = exc.headers.get("Retry-After")
-                    if retry_after and attempt < attempts - 1:
-                        try:
-                            time.sleep(float(retry_after))
-                        except ValueError:
-                            pass
-                    last_error = exc
-                    continue
-
-                if exc.code in _RETRYABLE_STATUS and attempt < attempts - 1:
-                    last_error = exc
-                    continue
-
-                # Non-retryable HTTP error — raise immediately.
-                raw = exc.read().decode("utf-8")
-                try:
-                    err = json.loads(raw)
-                except ValueError:
-                    err = {}
-                raise ScalekitError(
-                    exc.code,
-                    err.get("message", raw),
-                    err.get("code"),
-                )
-
-            except urllib.error.URLError as exc:
-                # Network-level failure (DNS, connection refused, timeout).
-                last_error = exc
-                if attempt < attempts - 1:
-                    continue
-                raise ScalekitError(0, "Request failed: {}".format(exc.reason))
-
-        # Exhausted retries on a retryable HTTP error.
-        if isinstance(last_error, urllib.error.HTTPError):
-            raw = last_error.read().decode("utf-8")
-            try:
-                err = json.loads(raw)
-            except ValueError:
-                err = {}
-            raise ScalekitError(
-                last_error.code,
-                err.get("message", raw),
-                err.get("code"),
+        try:
+            resp = self._http.request(
+                method, url,
+                body=encoded_body,
+                headers=self._get_headers(),
+                timeout=self.timeout,
             )
+        except urllib3.exceptions.MaxRetryError as exc:
+            raise ScalekitError(0, "Request failed: {}".format(exc.reason))
 
-        raise ScalekitError(0, "Request failed after {} attempts".format(attempts))
+        return _parse_response(resp)
+
+
+def _parse_response(resp):
+    """Parse a urllib3 response, raising ScalekitError on 4xx/5xx."""
+    raw = resp.data.decode("utf-8") if resp.data else ""
+
+    if resp.status >= 400:
+        try:
+            err = json.loads(raw)
+        except ValueError:
+            err = {}
+        raise ScalekitError(
+            resp.status,
+            err.get("message", err.get("error_description", raw)),
+            err.get("code", err.get("error")),
+        )
+
+    return json.loads(raw) if raw else {}
