@@ -1,14 +1,14 @@
 # scalekit-sdk-python-lite
 
-Lightweight Scalekit SDK for Python 3.5+. Zero dependencies for API calls; requires [`rsa`](https://pypi.org/project/rsa/) only for JWT validation.
+Lightweight Scalekit SDK for Python 3.5+. Two dependencies: [`urllib3`](https://pypi.org/project/urllib3/) for HTTP transport and [`rsa`](https://pypi.org/project/rsa/) for JWT validation.
 
 ## Installation
 
 ```bash
-pip install rsa
+pip install urllib3 rsa
 ```
 
-Then copy the `scalekit/` package into your project, or install from source:
+Or install the package directly from source, which pulls in dependencies automatically:
 
 ```bash
 pip install .
@@ -25,6 +25,21 @@ client = ScalekitClient(
     client_secret="...",
 )
 ```
+
+### Custom timeouts and retries
+
+```python
+client = ScalekitClient(
+    env_url="https://<your-environment>.scalekit.cloud",
+    client_id="skc_...",
+    client_secret="...",
+    connect_timeout=10,   # seconds to open a connection (default: 10)
+    read_timeout=30,      # seconds to wait for a response (default: 30)
+    max_retries=3,        # retries on 429 / 5xx / network errors (default: 3)
+)
+```
+
+The client uses connection pooling — a single `ScalekitClient` instance should be created once and reused across your application.
 
 ## API reference
 
@@ -94,41 +109,44 @@ client.directory.list_groups(organization_id, directory_id, page_size=None, page
 ### Auth (OIDC / OAuth2)
 
 ```python
-# Build authorization URL
+# Build authorization URL — redirect your user to this
 url = client.get_authorization_url(redirect_uri, options={
     "state": "...",
-    "organization_id": "...",   # optional
-    "connection_id": "...",     # optional
-    "login_hint": "...",        # optional
+    "organization_id": "...",   # optional: scope login to an org
+    "connection_id": "...",     # optional: force a specific SSO connection
+    "login_hint": "...",        # optional: pre-fill the login email
     "scope": "openid profile email offline_access",  # default
 })
 
-# Exchange authorization code for tokens
+# Exchange authorization code for tokens (call from your redirect URI handler)
 result = client.authenticate_with_code(code, redirect_uri)
-# result: {"access_token", "id_token", "refresh_token", "user"}
+# result keys: access_token, id_token, refresh_token, user (decoded id_token claims)
 
-# Validate an id_token (RS256, verifies signature + claims)
+# Validate an id_token — verifies RS256 signature and claims
 claims = client.validate_token(id_token, issuer=env_url, audience=client_id)
 
-# Refresh access token
+# Refresh the access token using a refresh_token
 result = client.refresh_access_token(refresh_token)
-# result: {"access_token", "refresh_token"}
+# result keys: access_token, refresh_token
 
-# Build logout URL
+# Build an OIDC logout URL
 url = client.get_logout_url(post_logout_redirect_uri="https://yourapp.com")
 ```
 
 ### Webhooks
 
 ```python
-# Raises ScalekitError on invalid signature; returns True on success
+# Returns True on a valid signature, raises ScalekitError otherwise
 client.verify_webhook_payload(secret, headers, payload)
-# secret: "whsec_<base64>"
-# headers: dict with webhook-id, webhook-timestamp, webhook-signature
-# payload: raw request body string
+# secret:  "whsec_<base64>" — from the Scalekit dashboard
+# headers: dict containing webhook-id, webhook-timestamp, webhook-signature
+# payload: raw request body string (do not parse before passing)
 ```
 
 ## Error handling
+
+All API errors raise `ScalekitError`. Transient errors (429, 5xx, network failures)
+are retried automatically with exponential backoff before the exception is raised.
 
 ```python
 from scalekit import ScalekitError
@@ -136,7 +154,9 @@ from scalekit import ScalekitError
 try:
     org = client.organization.get("org_123")
 except ScalekitError as e:
-    print(e.status_code, e.error_code, e.message)
+    print(e.status_code)   # HTTP status code
+    print(e.error_code)    # machine-readable code from the API
+    print(e.message)       # human-readable description
 ```
 
 ## Running the integration tests
@@ -144,9 +164,9 @@ except ScalekitError as e:
 Copy `.env.example` to `.env`, fill in your credentials, then:
 
 ```bash
-pip install rsa
-python test_live.py      # API integration tests
-python test_oidc_flow.py # OIDC browser flow (requires localhost:8080/callback whitelisted)
+pip install urllib3 rsa
+python test_live.py       # API integration tests (creates and deletes test data)
+python test_oidc_flow.py  # OIDC browser flow (requires localhost:8080/callback whitelisted)
 ```
 
 ## Python version compatibility
