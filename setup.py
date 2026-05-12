@@ -7,7 +7,7 @@ setup(
     packages=find_packages(exclude=["tests*"]),
     python_requires=">=3.5",
     install_requires=[
-        "urllib3>=1.26",
+        "urllib3>=1.26,<2.0",
         "rsa>=3.4",
     ],
     extras_require={

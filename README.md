@@ -5,7 +5,7 @@ Lightweight Scalekit SDK for Python 3.5+. Two dependencies: [`urllib3`](https://
 ## Installation
 
 ```bash
-pip install urllib3 rsa
+pip install "urllib3>=1.26,<2.0" rsa
 ```
 
 Or install the package directly from source, which pulls in dependencies automatically:
@@ -164,7 +164,7 @@ except ScalekitError as e:
 Copy `.env.example` to `.env`, fill in your credentials, then:
 
 ```bash
-pip install urllib3 rsa
+pip install "urllib3>=1.26,<2.0" rsa
 python test_live.py       # API integration tests (creates and deletes test data)
 python test_oidc_flow.py  # OIDC browser flow (requires localhost:8080/callback whitelisted)
 ```
