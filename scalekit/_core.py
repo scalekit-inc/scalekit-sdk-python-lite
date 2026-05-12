@@ -39,10 +39,6 @@ def _make_pool_manager(max_retries):
         num_pools=2,
         maxsize=10,
         retries=retry,
-        headers={
-            "x-sdk-version": _SDK_VERSION_HEADER,
-            "user-agent": _USER_AGENT,
-        },
     )
 
 
@@ -110,7 +106,11 @@ class CoreClient(object):
             resp = self._http.request(
                 "POST", url,
                 body=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "x-sdk-version": _SDK_VERSION_HEADER,
+                    "user-agent": _USER_AGENT,
+                },
                 timeout=self.timeout,
             )
         except urllib3.exceptions.MaxRetryError as exc:
@@ -125,10 +125,12 @@ class CoreClient(object):
         return self._token
 
     def _get_headers(self):
-        """Build request headers including a fresh bearer token."""
+        """Build request headers including a fresh bearer token and SDK identifiers."""
         return {
             "Authorization": "Bearer {}".format(self._get_token()),
             "Content-Type": "application/json",
+            "x-sdk-version": _SDK_VERSION_HEADER,
+            "user-agent": _USER_AGENT,
         }
 
     def request(self, method, path, body=None, params=None):

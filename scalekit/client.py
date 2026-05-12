@@ -170,7 +170,11 @@ class ScalekitClient(object):
             resp = self._core._http.request(
                 "POST", url,
                 body=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "x-sdk-version": _SDK_VERSION_HEADER,
+                    "user-agent": _USER_AGENT,
+                },
                 timeout=self._core.timeout,
             )
         except urllib3.exceptions.MaxRetryError as exc:
@@ -243,7 +247,11 @@ class ScalekitClient(object):
             resp = self._core._http.request(
                 "POST", url,
                 body=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "x-sdk-version": _SDK_VERSION_HEADER,
+                    "user-agent": _USER_AGENT,
+                },
                 timeout=self._core.timeout,
             )
         except urllib3.exceptions.MaxRetryError as exc:
