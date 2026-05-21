@@ -78,9 +78,7 @@ class TestOrganizationSlugAndLogo(unittest.TestCase):
     # -----------------------------------------------------------------------
 
     def test_create_with_logo_url(self):
-        # Use a real, publicly resolvable HTTPS image URL so the backend SSRF
-        # validator can fetch the resource and confirm it is reachable.
-        logo = 'https://www.google.com/favicon.ico'
+        logo = 'https://logo.debounce.com/microsoft.com'
         result = self.client.organization.create(
             'Acme Corporation',
             logo_url=logo,
@@ -103,9 +101,7 @@ class TestOrganizationSlugAndLogo(unittest.TestCase):
 
     def test_update_logo_url(self):
         self.org_id = self._create_plain_org()
-        # Use a real, publicly resolvable HTTPS image URL so the backend SSRF
-        # validator can fetch the resource and confirm it is reachable.
-        logo = 'https://www.google.com/favicon.ico'
+        logo = 'https://logo.debounce.com/microsoft.com'
         result = self.client.organization.update(
             self.org_id,
             logo_url=logo,
