@@ -74,21 +74,37 @@ class OrganizationClient(object):
             params={"page_size": page_size, "page_token": page_token},
         )
 
-    def update(self, org_id, **kwargs):
+    def update(self, org_id, display_name=None, external_id=None, metadata=None, logo_url=None, slug=None, **kwargs):
         """Update fields on an existing organization.
 
-        Pass any writable organization fields as keyword arguments, e.g.
-        ``display_name="Acme Corp"``.
-
         Args:
-            org_id:   Scalekit organization ID.
-            **kwargs: Fields to update.
+            org_id:       Scalekit organization ID.
+            display_name: New human-readable name for the organization (optional).
+            external_id:  New external ID to map to your system (optional).
+            metadata:     Key/value dict to attach to the organization (optional).
+            logo_url:     Publicly accessible URL of the organization's logo (optional).
+                          Used for organization logo branding on hosted pages.
+            slug:         DNS-safe slug, e.g. ``"acme"`` or ``"app.acmecorp.com"`` (optional).
+                          Expands ``{{slug}}`` in template redirect URIs.
+            **kwargs:     Any additional writable organization fields.
 
         Returns:
             Dict with the updated ``organization``.
         """
+        body = {}
+        if display_name is not None:
+            body["display_name"] = display_name
+        if external_id is not None:
+            body["external_id"] = external_id
+        if metadata is not None:
+            body["metadata"] = metadata
+        if logo_url is not None:
+            body["logo_url"] = logo_url
+        if slug is not None:
+            body["slug"] = slug
+        body.update(kwargs)
         return self._core.request(
-            "PATCH", "/api/v1/organizations/{}".format(org_id), body=kwargs
+            "PATCH", "/api/v1/organizations/{}".format(org_id), body=body
         )
 
     def delete(self, org_id):
