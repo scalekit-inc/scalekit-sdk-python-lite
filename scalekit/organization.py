@@ -10,13 +10,18 @@ class OrganizationClient(object):
     def __init__(self, core):
         self._core = core
 
-    def create(self, display_name, external_id=None, metadata=None):
+    def create(self, display_name, external_id=None, metadata=None, logo_url=None, slug=None):
         """Create a new organization.
 
         Args:
             display_name: Human-readable name shown in the Scalekit dashboard.
             external_id:  Your own identifier for this organization (optional).
             metadata:     Arbitrary key/value dict to attach to the organization (optional).
+            logo_url:     Publicly accessible URL of the organization's logo (optional).
+                          Used for organization logo branding on hosted pages.
+            slug:         DNS-safe slug for the organization, e.g. ``"acme"`` or
+                          ``"app.acmecorp.com"`` (optional). Used to expand ``{{slug}}``
+                          in template redirect URIs.
 
         Returns:
             Dict with an ``organization`` key containing the created organization.
@@ -26,6 +31,10 @@ class OrganizationClient(object):
             body["external_id"] = external_id
         if metadata is not None:
             body["metadata"] = metadata
+        if logo_url is not None:
+            body["logo_url"] = logo_url
+        if slug is not None:
+            body["slug"] = slug
         return self._core.request("POST", "/api/v1/organizations", body=body)
 
     def get(self, org_id):
