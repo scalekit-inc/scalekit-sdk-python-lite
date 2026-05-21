@@ -89,7 +89,7 @@ class TestOrganizationSlugAndLogo(unittest.TestCase):
         self.assertEqual(org['logo_url'], logo)
 
     def test_create_with_slug(self):
-        slug = 'app.acmecorp.com'
+        slug = 'auth.megasoft.com'
         result = self.client.organization.create(
             'Acme Corporation',
             slug=slug,
@@ -112,8 +112,8 @@ class TestOrganizationSlugAndLogo(unittest.TestCase):
 
     def test_update_slug_and_metadata(self):
         self.org_id = self._create_plain_org()
-        slug = 'app.acmecorp.com'
-        metadata = {'custom_domain': 'app.acmecorp.com'}
+        slug = 'auth.megasoft.com'
+        metadata = {'custom_domain': 'auth.megasoft.com'}
         result = self.client.organization.update(
             self.org_id,
             slug=slug,
@@ -122,7 +122,7 @@ class TestOrganizationSlugAndLogo(unittest.TestCase):
         self.assertIn('organization', result)
         org = result['organization']
         self.assertTrue(org.get('slug'), 'expected slug to be set after update')
-        self.assertEqual(org.get('metadata', {}).get('custom_domain'), 'app.acmecorp.com')
+        self.assertEqual(org.get('metadata', {}).get('custom_domain'), 'auth.megasoft.com')
 
 
 if __name__ == '__main__':
