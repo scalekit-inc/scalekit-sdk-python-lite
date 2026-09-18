@@ -291,6 +291,43 @@ class ScalekitClient(object):
             return "{}?{}".format(base_url, urllib.parse.urlencode(params))
         return base_url
 
+    def _verify_payload_signature(self, secret, msg_id, timestamp, signature, payload):
+        """Shared HMAC-SHA256 verification for webhook and interceptor payloads."""
+        if not all([msg_id, timestamp, signature]):
+            raise ScalekitError(400, "Missing required signature headers")
+
+        secret_parts = secret.split("_")
+        if len(secret_parts) < 2:
+            raise ScalekitError(400, "Invalid secret format")
+
+        try:
+            secret_bytes = base64.b64decode(secret_parts[1])
+        except Exception:
+            raise ScalekitError(400, "Invalid secret encoding")
+
+        try:
+            ts = float(timestamp)
+        except ValueError:
+            raise ScalekitError(400, "Invalid timestamp")
+
+        now = time.time()
+        if ts < (now - _WEBHOOK_TOLERANCE_SECONDS):
+            raise ScalekitError(400, "Timestamp too old")
+        if ts > (now + _WEBHOOK_TOLERANCE_SECONDS):
+            raise ScalekitError(400, "Timestamp too new")
+
+        payload_str = payload if isinstance(payload, str) else payload.decode("utf-8")
+        data = "{}.{}.{}".format(msg_id, int(ts), payload_str)
+        computed = hmac.new(secret_bytes, data.encode("utf-8"), hashlib.sha256).digest()
+        computed_b64 = base64.b64encode(computed).decode("utf-8")
+
+        for versioned_sig in signature.split(" "):
+            parts = versioned_sig.split(",", 1)
+            if len(parts) == 2 and parts[1].strip() == computed_b64:
+                return True
+
+        raise ScalekitError(400, "Signature verification failed")
+
     def verify_webhook_payload(self, secret, headers, payload):
         """Verify the HMAC-SHA256 signature on an incoming Scalekit webhook.
 
@@ -313,41 +350,40 @@ class ScalekitClient(object):
                            the ±5-minute tolerance window, or required headers
                            are missing.
         """
-        webhook_id = headers.get("webhook-id")
-        webhook_timestamp = headers.get("webhook-timestamp")
-        webhook_signature = headers.get("webhook-signature")
+        return self._verify_payload_signature(
+            secret,
+            headers.get("webhook-id"),
+            headers.get("webhook-timestamp"),
+            headers.get("webhook-signature"),
+            payload,
+        )
 
-        if not all([webhook_id, webhook_timestamp, webhook_signature]):
-            raise ScalekitError(400, "Missing required webhook headers")
+    def verify_interceptor_payload(self, secret, headers, payload):
+        """Verify the HMAC-SHA256 signature on an incoming Scalekit interceptor request.
 
-        secret_parts = secret.split("_")
-        if len(secret_parts) < 2:
-            raise ScalekitError(400, "Invalid webhook secret format")
+        Args:
+            secret:  Interceptor signing secret from the Scalekit dashboard.
+                     Format: ``"whsec_<base64>"``.
+            headers: Dict of HTTP request headers. Must include:
 
-        try:
-            secret_bytes = base64.b64decode(secret_parts[1])
-        except Exception:
-            raise ScalekitError(400, "Invalid webhook secret encoding")
+                     - ``interceptor-id`` — unique message ID
+                     - ``interceptor-timestamp`` — Unix timestamp (seconds)
+                     - ``interceptor-signature`` — ``"v1,<base64_sig>"``
 
-        try:
-            ts = float(webhook_timestamp)
-        except ValueError:
-            raise ScalekitError(400, "Invalid webhook timestamp")
+            payload: Raw request body string (do not parse it first).
 
-        now = time.time()
-        if ts < (now - _WEBHOOK_TOLERANCE_SECONDS):
-            raise ScalekitError(400, "Webhook timestamp too old")
-        if ts > (now + _WEBHOOK_TOLERANCE_SECONDS):
-            raise ScalekitError(400, "Webhook timestamp too new")
+        Returns:
+            ``True`` if the signature is valid.
 
-        payload_str = payload if isinstance(payload, str) else payload.decode("utf-8")
-        data = "{}.{}.{}".format(webhook_id, int(ts), payload_str)
-        computed = hmac.new(secret_bytes, data.encode("utf-8"), hashlib.sha256).digest()
-        computed_b64 = base64.b64encode(computed).decode("utf-8")
-
-        for versioned_sig in webhook_signature.split(" "):
-            parts = versioned_sig.split(",", 1)
-            if len(parts) == 2 and parts[1].strip() == computed_b64:
-                return True
-
-        raise ScalekitError(400, "Webhook signature verification failed")
+        Raises:
+            ScalekitError: If the signature is invalid, the timestamp is outside
+                           the ±5-minute tolerance window, or required headers
+                           are missing.
+        """
+        return self._verify_payload_signature(
+            secret,
+            headers.get("interceptor-id") or headers.get("webhook-id"),
+            headers.get("interceptor-timestamp") or headers.get("webhook-timestamp"),
+            headers.get("interceptor-signature") or headers.get("webhook-signature"),
+            payload,
+        )
