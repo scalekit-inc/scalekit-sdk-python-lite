@@ -25,7 +25,7 @@ class TestVerifyInterceptorPayload(unittest.TestCase):
             client_secret="test_secret",
         )
         self.secret_b64 = base64.b64encode(b"supersecretbytes").decode("utf-8")
-        self.secret = "whsec_" + self.secret_b64
+        self.secret = "icpsec_" + self.secret_b64
 
     def test_valid_interceptor_signature(self):
         ts = str(int(time.time()))

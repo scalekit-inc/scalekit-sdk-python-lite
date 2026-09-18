@@ -363,7 +363,7 @@ class ScalekitClient(object):
 
         Args:
             secret:  Interceptor signing secret from the Scalekit dashboard.
-                     Format: ``"whsec_<base64>"``.
+                     Format: ``"icpsec_<base64>"``.
             headers: Dict of HTTP request headers. Must include:
 
                      - ``interceptor-id`` — unique message ID
