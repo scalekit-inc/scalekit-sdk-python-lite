@@ -208,7 +208,11 @@ class ScalekitClient(object):
             token:    The JWT string to validate (typically an ``id_token``
                       or ``access_token`` issued by Scalekit).
             issuer:   Expected ``iss`` claim value. Defaults to your environment
-                      URL if omitted (recommended to pass explicitly).
+                      URL if omitted (recommended to pass explicitly). Pass a
+                      list of values to accept a token whose ``iss`` equals any
+                      entry (exact match), e.g. ``[env_url,
+                      env_url + "/resources/res_123"]``. An empty list skips
+                      the issuer check; a non-empty list is always enforced.
             audience: Expected ``aud`` claim value. Defaults to your client ID
                       if omitted.
 
