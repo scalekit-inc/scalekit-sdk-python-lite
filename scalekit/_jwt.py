@@ -30,6 +30,22 @@ def _base64url_to_int(s):
     return int.from_bytes(raw, "big")
 
 
+def _normalize_issuer(issuer):
+    """Return the list of allowed issuers, or None to skip the issuer check.
+
+    - None or an empty list/tuple/set -> None (check skipped)
+    - a string -> [string] (exact match; "" is still enforced, as before)
+    - a non-empty list/tuple/set -> list of its entries. It is always enforced,
+      even if the entries are blank, so config built from unset values fails
+      closed instead of silently skipping validation.
+    """
+    if issuer is None:
+        return None
+    if isinstance(issuer, (list, tuple, set, frozenset)):
+        return list(issuer) or None
+    return [issuer]
+
+
 class JwtValidator(object):
     """Validates RS256 JWTs against JWKS fetched from the Scalekit environment."""
 
@@ -96,12 +112,17 @@ class JwtValidator(object):
             raise ValueError("JWT has expired")
         if "nbf" in payload and now < payload["nbf"]:
             raise ValueError("JWT is not yet valid")
-        if issuer is not None and payload.get("iss") != issuer:
-            raise ValueError(
-                "JWT issuer mismatch: expected {!r}, got {!r}".format(
-                    issuer, payload.get("iss")
+        allowed_issuers = _normalize_issuer(issuer)
+        if allowed_issuers is not None:
+            iss = payload.get("iss")
+            # iss must be a string: a None entry in the list must never match a
+            # token that has no iss claim.
+            if not isinstance(iss, str) or iss not in allowed_issuers:
+                raise ValueError(
+                    "JWT issuer mismatch: expected {!r}, got {!r}".format(
+                        issuer, payload.get("iss")
+                    )
                 )
-            )
         if audience is not None:
             aud = payload.get("aud", [])
             if isinstance(aud, str):

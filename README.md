@@ -125,6 +125,14 @@ result = client.authenticate_with_code(code, redirect_uri)
 # Validate an id_token — verifies RS256 signature and claims
 claims = client.validate_token(id_token, issuer=env_url, audience=client_id)
 
+# To trust more than one issuer (e.g. the base issuer and a resource-bound one),
+# pass a list. The token is valid if its `iss` exactly equals any entry.
+claims = client.validate_token(
+    access_token,
+    issuer=[env_url, env_url + "/resources/res_123"],
+    audience=client_id,
+)
+
 # Refresh the access token using a refresh_token
 result = client.refresh_access_token(refresh_token)
 # result keys: access_token, refresh_token

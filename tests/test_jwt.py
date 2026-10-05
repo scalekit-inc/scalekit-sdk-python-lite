@@ -105,6 +105,89 @@ class TestJwtValidator(unittest.TestCase):
             validator.validate(token, issuer="https://wrong.example.com")
         self.assertIn("issuer mismatch", str(ctx.exception))
 
+    # --- multiple issuers (SK-2080): valid if iss equals ANY entry ---
+
+    BASE = "https://example.scalekit.com"
+    RESOURCE = "https://example.scalekit.com/resources/res_123"
+
+    def _token_with_iss(self, iss):
+        payload = self._valid_payload()
+        payload["iss"] = iss
+        return _make_jwt(payload, self.priv_key, kid=self.kid)
+
+    def test_issuer_list_matches_first_entry(self):
+        token = self._token_with_iss(self.BASE)
+        result = self._make_validator().validate(token, issuer=[self.BASE, self.RESOURCE])
+        self.assertEqual(result["iss"], self.BASE)
+
+    def test_issuer_list_matches_second_entry_resource_scoped_token(self):
+        token = self._token_with_iss(self.RESOURCE)
+        result = self._make_validator().validate(token, issuer=[self.BASE, self.RESOURCE])
+        self.assertEqual(result["iss"], self.RESOURCE)
+
+    def test_issuer_list_matches_none(self):
+        token = self._token_with_iss("https://example.scalekit.com/resources/res_other")
+        with self.assertRaises(ValueError) as ctx:
+            self._make_validator().validate(token, issuer=[self.BASE, self.RESOURCE])
+        self.assertIn("issuer mismatch", str(ctx.exception))
+
+    def test_issuer_single_string_still_exact(self):
+        token = self._token_with_iss(self.RESOURCE)
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=self.BASE)
+
+    def test_issuer_list_of_one_behaves_like_string(self):
+        token = self._token_with_iss(self.BASE)
+        self.assertEqual(self._make_validator().validate(token, issuer=[self.BASE])["iss"], self.BASE)
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=[self.RESOURCE])
+
+    def test_issuer_list_no_trailing_slash_normalization(self):
+        token = self._token_with_iss(self.BASE + "/")
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=[self.BASE])
+
+    def test_issuer_tuple_accepted(self):
+        token = self._token_with_iss(self.RESOURCE)
+        result = self._make_validator().validate(token, issuer=(self.BASE, self.RESOURCE))
+        self.assertEqual(result["iss"], self.RESOURCE)
+
+    def test_issuer_none_skips_check(self):
+        token = self._token_with_iss(self.RESOURCE)
+        self.assertEqual(self._make_validator().validate(token, issuer=None)["iss"], self.RESOURCE)
+
+    def test_issuer_empty_list_skips_check(self):
+        token = self._token_with_iss(self.RESOURCE)
+        self.assertEqual(self._make_validator().validate(token, issuer=[])["iss"], self.RESOURCE)
+
+    def test_issuer_blank_only_list_fails_closed_not_skipped(self):
+        token = self._token_with_iss(self.RESOURCE)
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=[""])
+
+    def test_issuer_blank_entries_ignored_alongside_real_ones(self):
+        token = self._token_with_iss(self.RESOURCE)
+        self.assertEqual(
+            self._make_validator().validate(token, issuer=["", self.RESOURCE])["iss"], self.RESOURCE
+        )
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=["", self.BASE])
+
+    def test_issuer_list_with_none_does_not_match_token_without_iss(self):
+        payload = self._valid_payload()
+        del payload["iss"]
+        token = _make_jwt(payload, self.priv_key, kid=self.kid)
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=[None])
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer=[None, self.BASE])
+
+    def test_issuer_empty_string_still_enforced_as_before(self):
+        # Existing behavior (unchanged): only None skips; "" never matches a real iss.
+        token = self._token_with_iss(self.RESOURCE)
+        with self.assertRaises(ValueError):
+            self._make_validator().validate(token, issuer="")
+
     def test_audience_check_pass(self):
         validator = self._make_validator()
         payload = self._valid_payload()
