@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ org.display_name }} branding</h1>
+<div class="flash warn">Organization Branding is off for this environment, so Scalekit refuses organization branding changes (403).
+  Turn it on in the Scalekit dashboard: <strong>Branding → Organization Branding</strong>.</div>
+<a class="btn outline" href="{{ url_for('home') }}">Back</a>
+{% endblock %}

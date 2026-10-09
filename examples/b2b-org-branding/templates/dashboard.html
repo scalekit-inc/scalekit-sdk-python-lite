@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ theme.name }}{% endblock %}
+{% block content %}
+<div class="card" data-testid="signed-in">
+  <h1>Welcome, {{ user.name }}</h1>
+  <p>You're signed in to <strong>{{ org.display_name }}</strong> (<code>{{ org.id }}</code>).</p>
+  <p class="muted">This page takes its logo, colour and name from the same organization branding that Scalekit's hosted login just showed you.</p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('home') }}">All workspaces</a>
+    <a class="btn outline" href="{{ url_for('edit_branding', org_id=org.id) }}">Edit branding</a>
+  </div>
+</div>
+{% endblock %}

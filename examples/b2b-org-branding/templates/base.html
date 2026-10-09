@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Acme Projects{% endblock %}</title>
+  <style>
+    :root { --brand: {{ (theme.button_color if theme else '#4F46E5') }}; --page: {{ (theme.background if theme else '#F8FAFC') }}; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #111827; background: var(--page); }
+    header { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: #fff; border-bottom: 1px solid #E5E7EB; }
+    header .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; color: inherit; text-decoration: none; }
+    header img { height: 28px; width: 28px; object-fit: contain; }
+    header .spacer { flex: 1; }
+    main { max-width: 920px; margin: 32px auto; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+    .row { display: flex; align-items: center; gap: 14px; }
+    .row .grow { flex: 1; min-width: 0; }
+    .logo { height: 40px; width: 40px; border-radius: 8px; object-fit: contain; background: #F3F4F6; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; color: #6B7280; }
+    .btn { display: inline-block; padding: 8px 14px; border-radius: 6px; border: 1px solid transparent; background: var(--brand); color: #fff; text-decoration: none; font-weight: 500; cursor: pointer; font-size: 14px; }
+    .btn.outline { background: #fff; color: #111827; border-color: #D1D5DB; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #EEF2FF; color: #3730A3; }
+    .badge.env { background: #F3F4F6; color: #374151; }
+    .muted { color: #6B7280; font-size: 13px; }
+    .flash { background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
+    .warn { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+    label { display: block; font-weight: 500; margin: 12px 0 4px; }
+    input[type=text], select { width: 100%; padding: 8px 10px; border: 1px solid #D1D5DB; border-radius: 6px; font: inherit; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 16px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    code { background: #F3F4F6; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="{{ url_for('home') }}">
+      {% if theme and theme.logo_url %}<img src="{{ theme.logo_url }}" alt="">{% endif %}
+      <span>{{ theme.name if theme else 'Acme Projects' }}</span>
+    </a>
+    <span class="spacer"></span>
+    {% if user %}<span class="muted">{{ user.email }}</span> <a class="btn outline" href="{{ url_for('logout') }}">Sign out</a>{% endif %}
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
