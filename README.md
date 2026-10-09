@@ -118,8 +118,6 @@ Rules worth knowing:
   url = client.get_authorization_url(redirect_uri, options={"organization_id": "org_123"})
   ```
 
-See [`examples/b2b-org-branding`](examples/b2b-org-branding) for a complete app.
-
 ### Users
 
 ```python
