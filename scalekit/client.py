@@ -92,6 +92,8 @@ class ScalekitClient(object):
                           - ``organization_id`` — scope login to an organization
                           - ``domain`` — hint the IdP via domain
                           - ``login_hint`` — pre-fill the login email
+                          - ``prompt`` — ``"login"`` to force a fresh login,
+                            ``"create"`` to open the signup page
                           - ``state`` — opaque value echoed back on redirect
                           - ``nonce`` — value included in the id_token claims
                           - ``scope`` — space-separated OIDC scopes (default:
@@ -117,6 +119,7 @@ class ScalekitClient(object):
             "organization_id",
             "domain",
             "login_hint",
+            "prompt",
             "state",
             "nonce",
             "code_challenge",

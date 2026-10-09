@@ -62,6 +62,62 @@ client.organization.get_user_management_settings(organization_id)
 client.organization.upsert_user_management_settings(organization_id, settings)
 ```
 
+### Organization branding
+
+Give each organization (each of your B2B customers) its own logo, colors and name on the
+Scalekit-hosted login pages and admin portal. Values an organization doesn't set fall back
+to your environment branding.
+
+Turn it on once per environment in the dashboard (**Branding → Organization Branding**).
+Until then these calls raise `ScalekitError` with `status_code == 403`.
+
+```python
+# Save and apply an organization's own branding. Replaces whatever it had saved:
+# send every value it should override; the rest comes from the environment.
+client.organization.set_branding("org_123", {
+    "portal_customization": {
+        "logo_url": "https://cdn.acme.com/logo.png",
+        "icon_url": "https://cdn.acme.com/favicon.ico",
+        "button_color": "#B71C1C",
+        "button_hover_color": "#8E1414",
+        "login_bg_color": "#FDECEA",
+        "border_radius": "lg",
+    },
+    "application_customization": {
+        "name": "Acme Portal",                       # optional; defaults to the organization's name
+        "privacy_policy_url": "https://acme.com/privacy",
+        "terms_of_service_url": "https://acme.com/terms",
+    },
+})
+
+# Read it back
+branding = client.organization.get_branding("org_123")["branding"]
+branding["source"]                  # "BRANDING_SOURCE_CUSTOM" or "BRANDING_SOURCE_ENVIRONMENT"
+branding["customization_settings"]  # what the organization overrides (not merged with the environment)
+
+# Switch back to the environment branding; the saved branding is kept ...
+client.organization.use_environment_branding("org_123")
+# ... and can be re-applied later
+client.organization.reapply_branding("org_123")
+
+# General form
+from scalekit import BRANDING_SOURCE_CUSTOM, BRANDING_SOURCE_ENVIRONMENT
+client.organization.update_branding("org_123", BRANDING_SOURCE_CUSTOM, customization_settings=None)
+```
+
+Rules worth knowing:
+
+- An empty string removes a value for that organization (`"logo_url": ""` shows no logo
+  even though the environment has one); a key that is left out inherits the environment value.
+- Setting a logo with `organization.create(..., logo_url=...)` or `organization.update(..., logo_url=...)`
+  is the same as setting `portal_customization.logo_url`: the organization switches to custom branding.
+- The hosted pages show an organization's branding when the login is for that organization.
+  Pass `organization_id` to `get_authorization_url`:
+
+  ```python
+  url = client.get_authorization_url(redirect_uri, options={"organization_id": "org_123"})
+  ```
+
 ### Users
 
 ```python
