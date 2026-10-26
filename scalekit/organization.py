@@ -1,5 +1,3 @@
-import copy
-
 try:
     from typing import Any, Dict, List, Optional
 except ImportError:
@@ -29,26 +27,6 @@ def _branding_source(source):
             )
         )
     return normalised
-
-
-def _support_email_location(settings):
-    """Return the (section, key) that holds the support email in ``settings``.
-
-    Branding is saved in one of two shapes. Settings that have a
-    ``placeholder_mappings`` section keep the support email there, as
-    ``app_support_email``; the API reads ``application_customization`` only
-    from settings without it.
-    """
-    if "placeholder_mappings" in settings:
-        return "placeholder_mappings", "app_support_email"
-    return "application_customization", "support_email"
-
-
-def _saved_settings(branding_response):
-    """Return the ``branding`` dict and a copy of its saved settings (``{}`` when none)."""
-    branding = (branding_response or {}).get("branding") or {}
-    settings = copy.deepcopy(branding.get("customization_settings") or {})
-    return branding, settings
 
 
 class OrganizationClient(object):
@@ -397,111 +375,6 @@ class OrganizationClient(object):
             ScalekitError: 400 if the organization has no saved branding.
         """
         return self.update_branding(organization_id, BRANDING_SOURCE_CUSTOM)
-
-    def get_support_email(self, organization_id):
-        """Return the support email an organization's own branding sets.
-
-        The support email appears on the organization's login page and, when
-        you send emails through your own email provider, as the
-        ``organization_support_email`` template variable.
-
-        Args:
-            organization_id: Scalekit organization ID.
-
-        Returns:
-            The organization's support email, or ``None`` when it uses your
-            environment's support email: it uses custom branding that leaves the
-            support email empty, or it uses environment branding.
-
-        Raises:
-            ScalekitError: 403 if organization branding is not turned on for
-                           the environment, 404 if the organization does not exist.
-        """
-        branding, settings = _saved_settings(self.get_branding(organization_id))
-        if branding.get("source") != BRANDING_SOURCE_CUSTOM:
-            return None
-        section, key = _support_email_location(settings)
-        return (settings.get(section) or {}).get(key) or None
-
-    def set_support_email(self, organization_id, support_email):
-        """Set the support email for an organization.
-
-        Keeps everything else the organization has saved and changes only the
-        support email. The organization switches to custom branding; if it was
-        using environment branding, the branding it saved before is re-applied
-        along with the new support email.
-
-        Example::
-
-            client.organization.set_support_email("org_123", "support@acme.com")
-
-        Args:
-            organization_id: Scalekit organization ID.
-            support_email:   The email address to show, such as
-                             ``"support@acme.com"``. Surrounding spaces are removed.
-
-        Returns:
-            Dict with the updated ``branding``.
-
-        The SDK reads the saved branding and writes it back in a second call,
-        so a change saved by someone else in between is overwritten.
-
-        Raises:
-            ValueError:    If ``support_email`` is not an email address.
-            ScalekitError: 400 if the API rejects the settings; 403 if
-                           organization branding is not turned on; 404 if the
-                           organization does not exist.
-        """
-        if not isinstance(support_email, str):
-            raise ValueError("support_email must be a string, got {!r}".format(support_email))
-        email = support_email.strip()
-        local, at, domain = email.partition("@")
-        if not local or not at or not domain or " " in email:
-            raise ValueError("support_email must be an email address, got {!r}".format(support_email))
-
-        _, settings = _saved_settings(self.get_branding(organization_id))
-        section, key = _support_email_location(settings)
-        values = settings.get(section)
-        if not isinstance(values, dict):
-            values = {}
-            settings[section] = values
-        values[key] = email
-        return self.update_branding(organization_id, BRANDING_SOURCE_CUSTOM, settings)
-
-    def remove_support_email(self, organization_id):
-        """Remove an organization's own support email, so it uses your environment's.
-
-        Keeps everything else the organization has saved. The organization's
-        login page and emails then show your environment's support email, and
-        follow any later change to it.
-
-        Nothing is written when the organization sets no support email, or when
-        it uses environment branding (it already shows your environment's). In
-        the second case a support email in its saved branding stays saved, and
-        :meth:`reapply_branding` brings it back with the rest.
-
-        Args:
-            organization_id: Scalekit organization ID.
-
-        Returns:
-            Dict with the organization's ``branding`` after the change.
-
-        Raises:
-            ScalekitError: 403 if organization branding is not turned on; 404 if
-                           the organization does not exist.
-        """
-        response = self.get_branding(organization_id)
-        branding, settings = _saved_settings(response)
-        if branding.get("source") != BRANDING_SOURCE_CUSTOM:
-            return response
-        section, key = _support_email_location(settings)
-        values = settings.get(section)
-        if not isinstance(values, dict) or key not in values:
-            return response
-        # Remove the key rather than sending "": an empty string is saved as the organization's
-        # value and shows no support email, while a missing key uses the environment's.
-        del values[key]
-        return self.update_branding(organization_id, BRANDING_SOURCE_CUSTOM, settings)
 
     def get_user_management_settings(self, organization_id):
         """Retrieve user management settings for an organization.

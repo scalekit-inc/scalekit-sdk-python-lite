@@ -105,50 +105,10 @@ from scalekit import BRANDING_SOURCE_CUSTOM, BRANDING_SOURCE_ENVIRONMENT
 client.organization.update_branding("org_123", BRANDING_SOURCE_CUSTOM, customization_settings=None)
 ```
 
-#### Support email
-
-An organization can show its own support email on its login page and, when you send emails
-through your own email provider, in the `organization_support_email` template variable. Without
-one, it shows your environment's support email.
-
-```python
-import os
-
-from scalekit import ScalekitClient, ScalekitError
-
-client = ScalekitClient(
-    env_url=os.environ["SCALEKIT_ENVIRONMENT_URL"],
-    client_id=os.environ["SCALEKIT_CLIENT_ID"],
-    client_secret=os.environ["SCALEKIT_CLIENT_SECRET"],
-)
-org_id = "org_123"
-
-try:
-    # Set it; the rest of the organization's saved branding stays as it is
-    client.organization.set_support_email(org_id, "support@acme.com")
-    print(client.organization.get_support_email(org_id))  # support@acme.com
-
-    # Go back to your environment's support email
-    client.organization.remove_support_email(org_id)
-    print(client.organization.get_support_email(org_id))  # None
-except ValueError as e:
-    print("Not an email address:", e)
-except ScalekitError as e:
-    if e.status_code == 403:
-        print("Turn on Organization Branding under Branding in the Scalekit dashboard first")
-    else:
-        raise
-```
-
-`set_support_email` switches the organization to custom branding, like setting a logo. These
-methods read the saved branding and write it back, so a change saved by someone else in between
-is overwritten.
-
 Rules worth knowing:
 
 - An empty string removes a value for that organization (`"logo_url": ""` shows no logo
   even though the environment has one); a key that is left out inherits the environment value.
-  For the support email, use `remove_support_email` to inherit your environment's again.
 - Setting a logo with `organization.create(..., logo_url=...)` or `organization.update(..., logo_url=...)`
   is the same as setting `portal_customization.logo_url`: the organization switches to custom branding.
 - The hosted pages show an organization's branding when the login is for that organization.
