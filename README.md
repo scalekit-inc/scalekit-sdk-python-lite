@@ -105,10 +105,37 @@ from scalekit import BRANDING_SOURCE_CUSTOM, BRANDING_SOURCE_ENVIRONMENT
 client.organization.update_branding("org_123", BRANDING_SOURCE_CUSTOM, customization_settings=None)
 ```
 
+#### Change one value, such as the support email
+
+`set_branding` replaces everything the organization saved. To change one value and keep the
+rest, read the saved branding, change it, and save it back. For example, the organization's
+support email, shown on its login page and, when you send emails through your own email
+provider, in the `organization_support_email` template variable:
+
+```python
+branding = client.organization.get_branding("org_123")["branding"]
+settings = branding.get("customization_settings") or {}
+
+# Set it
+settings.setdefault("application_customization", {})["support_email"] = "support@acme.com"
+client.organization.set_branding("org_123", settings)
+
+# Or remove it, so the organization shows your environment's support email again
+settings.get("application_customization", {}).pop("support_email", None)
+client.organization.set_branding("org_123", settings)
+```
+
+Saving switches the organization to custom branding. If it was using environment branding,
+the branding it saved before is applied again along with your change. If the saved settings
+have a `placeholder_mappings` section, the support email is read from
+`placeholder_mappings.app_support_email` instead, so change it there.
+
 Rules worth knowing:
 
 - An empty string removes a value for that organization (`"logo_url": ""` shows no logo
   even though the environment has one); a key that is left out inherits the environment value.
+  So to go back to the environment's support email, leave `support_email` out: `"support_email": ""`
+  shows no support email.
 - Setting a logo with `organization.create(..., logo_url=...)` or `organization.update(..., logo_url=...)`
   is the same as setting `portal_customization.logo_url`: the organization switches to custom branding.
 - The hosted pages show an organization's branding when the login is for that organization.
